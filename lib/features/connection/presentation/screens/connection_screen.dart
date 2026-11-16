@@ -88,13 +88,22 @@ class _ConnectionScreenState extends State<ConnectionScreen>
   void _onConnectionStatusChanged() {
     if (FirebaseService.instance.isConnected && mounted && !_hasNavigated) {
       _hasNavigated = true;
-      Navigator.pushReplacementNamed(context, '/dashboard');
+      Navigator.pushNamed(context, '/dashboard').then((_) {
+        if (mounted) {
+          _hasNavigated = false;
+        }
+      });
     }
   }
 
   void _connectToSession(String sessionId) {
     FirebaseService.instance.startListening(sessionId, viewOnly: true);
-    Navigator.pushReplacementNamed(context, '/dashboard');
+    _hasNavigated = true;
+    Navigator.pushNamed(context, '/dashboard').then((_) {
+      if (mounted) {
+        _hasNavigated = false;
+      }
+    });
   }
 
   @override

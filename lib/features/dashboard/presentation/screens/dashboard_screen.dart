@@ -11,6 +11,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../../../core/widgets/stat_card.dart';
 import '../../../../core/widgets/upgrade_banner.dart';
+import '../../../../core/utils/report_image_cache.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -36,11 +37,35 @@ class _DashboardScreenState extends State<DashboardScreen>
   late DateTime _connectedAt;
   bool _notificationsEnabled = false;
   Timer? _rebuildTimer;
+  JSFunction? _popStateCallback;
+
+  void _selectTab(int index) {
+    if (_selectedIndex == index) return;
+    try {
+      web.window.history.pushState('dashboard_tab_$index'.toJS, '', '/dashboard');
+    } catch (_) {}
+    setState(() {
+      _selectedIndex = index;
+    });
+    if (index == 7) {
+      _refreshReports();
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     _connectedAt = DateTime.now();
+    try {
+      _popStateCallback = ((web.Event event) {
+        if (mounted && _selectedIndex != 0) {
+          setState(() {
+            _selectedIndex = 0;
+          });
+        }
+      }).toJS;
+      web.window.addEventListener('popstate', _popStateCallback);
+    } catch (_) {}
     // Listen for crashes to show browser notifications
     FirebaseService.instance.addListener(_onDataChanged);
     _refreshReports();
@@ -66,6 +91,11 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   void dispose() {
+    if (_popStateCallback != null) {
+      try {
+        web.window.removeEventListener('popstate', _popStateCallback);
+      } catch (_) {}
+    }
     _rebuildTimer?.cancel();
     _networkSearchController.dispose();
     _logSearchController.dispose();
@@ -179,8 +209,9 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   Widget build(BuildContext context) {
+    final canPop = _selectedIndex == 0 && Navigator.canPop(context);
     return PopScope(
-      canPop: false,
+      canPop: canPop,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
         if (_selectedIndex != 0) {
@@ -308,8 +339,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   : Colors.grey[500],
             ),
             onPressed: () {
-              setState(() => _selectedIndex = 7);
-              _refreshReports();
+              _selectTab(7);
             },
           ),
           // Share session
@@ -914,12 +944,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
           onTap: () {
-            setState(() {
-              _selectedIndex = index;
-            });
-            if (index == 7) {
-              _refreshReports();
-            }
+            _selectTab(index);
           },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
@@ -2398,8 +2423,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     const Divider(color: Colors.white12, height: 24),
                     InkWell(
                       onTap: () {
-                        setState(() => _selectedIndex = 7);
-                        _refreshReports();
+                        _selectTab(7);
                       },
                       child: _quickStatRow(
                         'Bug Reports',
@@ -3320,10 +3344,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Widget _buildScreenshotThumbnail(String base64Str, String reportId) {
-    Uint8List? bytes;
-    try {
-      bytes = base64Decode(base64Str);
-    } catch (_) {}
+    final bytes = ReportImageCache.getBytes(reportId, base64Str);
 
     if (bytes == null || bytes.isEmpty) return const SizedBox.shrink();
 
@@ -3348,6 +3369,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         child: Image.memory(
           bytes,
           fit: BoxFit.cover,
+          gaplessPlayback: true,
         ),
       ),
     );

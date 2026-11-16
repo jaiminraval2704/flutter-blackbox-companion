@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:js_interop';
 import 'package:web/web.dart' as web;
 import 'package:flutter/material.dart';
@@ -6,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../dashboard/data/firebase_service.dart';
 import '../../../../core/widgets/glass_container.dart';
+import '../../../../core/utils/report_image_cache.dart';
 
 class ReportScreen extends StatefulWidget {
   final String reportId;
@@ -92,10 +92,11 @@ class _ReportScreenState extends State<ReportScreen> {
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: false,
+      canPop: true,
       onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
-        _handleBack();
+        if (!didPop) {
+          _handleBack();
+        }
       },
       child: Scaffold(
         body: Container(
@@ -405,12 +406,7 @@ class _ReportScreenState extends State<ReportScreen> {
   }
 
   Widget _buildScreenshotCard(String base64Str) {
-    Uint8List? bytes;
-    try {
-      bytes = base64Decode(base64Str);
-    } catch (e) {
-      debugPrint('Failed to decode screenshot: $e');
-    }
+    final bytes = ReportImageCache.getBytes(widget.reportId, base64Str);
 
     if (bytes == null || bytes.isEmpty) return const SizedBox.shrink();
 
@@ -422,7 +418,7 @@ class _ReportScreenState extends State<ReportScreen> {
           children: [
             _reportSection('Screenshot', Icons.image_rounded, const Color(0xFF38BDF8)),
             ElevatedButton.icon(
-              onPressed: () => _downloadScreenshot(bytes!),
+              onPressed: () => _downloadScreenshot(bytes),
               icon: const Icon(Icons.download_rounded, size: 14),
               label: const Text('Download Image', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
@@ -447,6 +443,7 @@ class _ReportScreenState extends State<ReportScreen> {
                     child: Image.memory(
                       bytes,
                       fit: BoxFit.contain,
+                      gaplessPlayback: true,
                     ),
                   ),
                 ),
@@ -458,7 +455,7 @@ class _ReportScreenState extends State<ReportScreen> {
                     child: Material(
                       color: Colors.transparent,
                       child: InkWell(
-                        onTap: () => _downloadScreenshot(bytes!),
+                        onTap: () => _downloadScreenshot(bytes),
                         borderRadius: BorderRadius.circular(8),
                         child: Container(
                           padding: const EdgeInsets.all(8),
