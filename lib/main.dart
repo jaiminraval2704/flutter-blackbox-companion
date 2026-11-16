@@ -1,13 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
-import 'screens/connection_screen.dart';
-import 'screens/dashboard_screen.dart';
-import 'screens/report_screen.dart';
+import 'package:flutter_web_plugins/url_strategy.dart';
+import 'core/services/firebase_options.dart';
+import 'features/connection/presentation/screens/connection_screen.dart';
+import 'features/dashboard/presentation/screens/dashboard_screen.dart';
+import 'features/report/presentation/screens/report_screen.dart';
+import 'features/auth/presentation/screens/auth_screen.dart';
+import 'features/pricing/presentation/screens/pricing_screen.dart';
 
 void main() async {
   try {
+    // Use clean URLs without the # fragment (e.g. /dashboard instead of /#/dashboard)
+    usePathUrlStrategy();
+
     WidgetsFlutterBinding.ensureInitialized();
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -63,31 +69,72 @@ class BlackBoxCompanionApp extends StatelessWidget {
           ),
         ),
       ),
-      initialRoute: '/',
+      initialRoute: '/auth',
       onGenerateRoute: (settings) {
         Widget page;
-        switch (settings.name) {
-          case '/dashboard':
-            page = const DashboardScreen();
-            break;
-          case '/report':
-            final args = settings.arguments;
-            String reportId = '';
-            bool fromDashboard = false;
-            if (args is String) {
-              reportId = args;
-            } else if (args is Map) {
-              reportId = args['reportId'] as String? ?? '';
-              fromDashboard = args['fromDashboard'] as bool? ?? false;
-            }
-            page = ReportScreen(
-              reportId: reportId,
-              fromDashboard: fromDashboard,
-            );
-            break;
-          default:
-            page = const ConnectionScreen();
+        final uri = Uri.parse(settings.name ?? '/');
+        final pathSegments = uri.pathSegments;
+
+        // ── Route matching ────────────────────────────────────────────
+        // Matches URL paths like:
+        //   /auth          → AuthScreen
+        //   /connection    → ConnectionScreen
+        //   /dashboard     → DashboardScreen
+        //   /pricing       → PricingScreen
+        //   /report/123    → ReportScreen(reportId: '123')
+        //   /watch/ABC     → ConnectionScreen (view-only session)
+        //   /              → AuthScreen (default)
+
+        if (pathSegments.isNotEmpty &&
+            pathSegments[0] == 'report' &&
+            pathSegments.length >= 2) {
+          // /report/:reportId — deep link to a specific bug report
+          final reportId = pathSegments[1];
+          final fromDashboard = (settings.arguments is Map)
+              ? (settings.arguments as Map)['fromDashboard'] == true
+              : false;
+          page = ReportScreen(reportId: reportId, fromDashboard: fromDashboard);
+        } else if (pathSegments.isNotEmpty &&
+            pathSegments[0] == 'watch' &&
+            pathSegments.length >= 2) {
+          // /watch/:sessionId — deep link to view a live session
+          page = const ConnectionScreen();
+        } else {
+          // Standard path matching
+          switch (uri.path) {
+            case '/auth':
+              page = const AuthScreen();
+              break;
+            case '/connection':
+              page = const ConnectionScreen();
+              break;
+            case '/pricing':
+              page = const PricingScreen();
+              break;
+            case '/dashboard':
+              page = const DashboardScreen();
+              break;
+            case '/report':
+              // /report with arguments (internal navigation)
+              final args = settings.arguments;
+              String reportId = '';
+              bool fromDashboard = false;
+              if (args is String) {
+                reportId = args;
+              } else if (args is Map) {
+                reportId = args['reportId'] as String? ?? '';
+                fromDashboard = args['fromDashboard'] as bool? ?? false;
+              }
+              page = ReportScreen(
+                reportId: reportId,
+                fromDashboard: fromDashboard,
+              );
+              break;
+            default:
+              page = const AuthScreen();
+          }
         }
+
         return PageRouteBuilder(
           settings: settings,
           pageBuilder: (context, animation, secondaryAnimation) => page,

@@ -1,6 +1,27 @@
 {
   "rules": {
-    ".read": true,
-    ".write": true
+    "users": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid",
+        "tier": {
+          ".validate": "(!data.exists() && newData.val() == 'free') || (data.val() == newData.val())"
+        }
+      }
+    },
+    "sessions": {
+      "$sessionId": {
+        ".read": true,
+        ".write": true
+      }
+    },
+    "reports": {
+      ".read": true,
+      ".write": true
+    },
+    "session_history": {
+      ".read": true,
+      ".write": true
+    }
   }
 }

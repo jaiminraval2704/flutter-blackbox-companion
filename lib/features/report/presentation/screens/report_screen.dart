@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../services/firebase_service.dart';
-import '../widgets/glass_container.dart';
+import '../../../dashboard/data/firebase_service.dart';
+import '../../../../core/widgets/glass_container.dart';
 
 class ReportScreen extends StatefulWidget {
   final String reportId;
@@ -96,7 +98,7 @@ class _ReportScreenState extends State<ReportScreen> {
               } else {
                 Navigator.pushNamedAndRemoveUntil(
                   context,
-                  '/',
+                  '/connection',
                   (route) => false,
                 );
               }
@@ -110,12 +112,18 @@ class _ReportScreenState extends State<ReportScreen> {
 
   Widget _buildReport() {
     final r = _report!;
-    final deviceInfo = r['deviceInfo'] as Map?;
+    final title = (r['title'] ?? r['bugTitle'] ?? 'Bug Report').toString();
+    final severity = (r['severity'] ?? 'normal').toString().toUpperCase();
+    final createdAt = r['createdAt'] ?? r['timestamp'] ?? '';
+    final reportId = (r['reportId'] ?? widget.reportId).toString();
+    final deviceInfo = (r['deviceInfo'] ?? r['device']) as Map?;
+    final appInfo = (r['appInfo'] ?? r['app']) as Map?;
     final networkList =
-        (r['recentNetworkRequests'] as List?)?.cast<Map>() ?? [];
-    final logList = (r['recentLogs'] as List?)?.cast<Map>() ?? [];
+        ((r['recentNetworkRequests'] ?? r['networkRequests'] ?? r['failedRequests']) as List?)?.cast<Map>() ?? [];
+    final logList = ((r['recentLogs'] ?? r['logs']) as List?)?.cast<Map>() ?? [];
     final crashList = (r['crashes'] as List?)?.cast<Map>() ?? [];
-    final navList = (r['navigationHistory'] as List?)?.cast<Map>() ?? [];
+    final navList = (r['navigationHistory'] ?? r['userJourney']) as List? ?? [];
+    final screenshotBase64 = (r['screenshotBase64'] ?? r['screenshot']) as String?;
 
     return Column(
       children: [
@@ -149,21 +157,65 @@ class _ReportScreenState extends State<ReportScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      r['title'] ?? 'Bug Report',
-                      style: GoogleFonts.outfit(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            title,
+                            style: GoogleFonts.outfit(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: _severityColor(severity).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: _severityColor(severity).withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Text(
+                            severity,
+                            style: TextStyle(
+                              color: _severityColor(severity),
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
+                    const SizedBox(height: 2),
                     Text(
-                      'Generated ${_formatDate(r['createdAt'])}',
+                      'Generated ${_formatDate(createdAt)} • ID: $reportId',
                       style: TextStyle(color: Colors.grey[500], fontSize: 12),
                     ),
                   ],
                 ),
               ),
+              OutlinedButton.icon(
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: _toMarkdown(r)));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Report Markdown copied!')),
+                  );
+                },
+                icon: const Icon(Icons.copy_rounded, size: 14),
+                label: const Text('Markdown', style: TextStyle(fontSize: 12)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.grey[300],
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+              ),
+              const SizedBox(width: 8),
               TextButton.icon(
                 onPressed: () {
                   if (widget.fromDashboard) {
@@ -175,7 +227,7 @@ class _ReportScreenState extends State<ReportScreen> {
                   } else {
                     Navigator.pushNamedAndRemoveUntil(
                       context,
-                      '/',
+                      '/connection',
                       (route) => false,
                     );
                   }
@@ -211,10 +263,13 @@ class _ReportScreenState extends State<ReportScreen> {
                 ),
                 const SizedBox(height: 24),
               ],
-              // Device Info
-              if (deviceInfo != null) ...[
+              // Screenshot Preview
+              if (screenshotBase64 != null && screenshotBase64.isNotEmpty)
+                _buildScreenshotCard(screenshotBase64),
+              // Device & App Info
+              if (deviceInfo != null || appInfo != null) ...[
                 _reportSection(
-                  'Device Info',
+                  'Device & Environment',
                   Icons.phone_android_rounded,
                   const Color(0xFF818CF8),
                 ),
@@ -223,9 +278,14 @@ class _ReportScreenState extends State<ReportScreen> {
                   child: Wrap(
                     spacing: 24,
                     runSpacing: 12,
-                    children: deviceInfo.entries
-                        .map((e) => _infoPill(e.key, e.value.toString()))
-                        .toList(),
+                    children: [
+                      if (deviceInfo != null)
+                        ...deviceInfo.entries
+                            .map((e) => _infoPill(e.key, e.value.toString())),
+                      if (appInfo != null)
+                        ...appInfo.entries
+                            .map((e) => _infoPill('app_${e.key}', e.value.toString())),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -242,7 +302,7 @@ class _ReportScreenState extends State<ReportScreen> {
                 ),
                 const SizedBox(height: 24),
               ],
-              // Navigation History
+              // Navigation History / User Journey
               if (navList.isNotEmpty) ...[
                 _reportSection(
                   'User Journey (${navList.length})',
@@ -253,7 +313,7 @@ class _ReportScreenState extends State<ReportScreen> {
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     children: navList.reversed
-                        .map((n) => _navItem(Map<String, dynamic>.from(n)))
+                        .map((n) => _navItem(n))
                         .toList(),
                   ),
                 ),
@@ -285,6 +345,112 @@ class _ReportScreenState extends State<ReportScreen> {
         ),
       ],
     );
+  }
+
+  Widget _buildScreenshotCard(String base64Str) {
+    Uint8List? bytes;
+    try {
+      bytes = base64Decode(base64Str);
+    } catch (e) {
+      debugPrint('Failed to decode screenshot: $e');
+    }
+
+    if (bytes == null || bytes.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _reportSection('Screenshot', Icons.image_rounded, const Color(0xFF38BDF8)),
+        GlassContainer(
+          padding: const EdgeInsets.all(16),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 480),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.memory(
+                  bytes,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Color _severityColor(String severity) {
+    switch (severity.toUpperCase()) {
+      case 'CRITICAL':
+        return const Color(0xFFEF4444);
+      case 'HIGH':
+        return const Color(0xFFF97316);
+      case 'MEDIUM':
+        return const Color(0xFFFBBF24);
+      case 'LOW':
+        return const Color(0xFF38BDF8);
+      default:
+        return const Color(0xFF818CF8);
+    }
+  }
+
+  String _toMarkdown(Map<String, dynamic> r) {
+    final title = r['title'] ?? r['bugTitle'] ?? 'Bug Report';
+    final severity = (r['severity'] ?? 'NORMAL').toString().toUpperCase();
+    final time = r['createdAt'] ?? r['timestamp'] ?? '';
+    final notes = r['notes']?.toString() ?? '';
+    final dev = (r['deviceInfo'] ?? r['device']) as Map?;
+    final app = (r['appInfo'] ?? r['app']) as Map?;
+    final nav = (r['navigationHistory'] ?? r['userJourney']) as List? ?? [];
+    final net = ((r['recentNetworkRequests'] ?? r['networkRequests'] ?? r['failedRequests']) as List?)?.cast<Map>() ?? [];
+    final crashes = (r['crashes'] as List?)?.cast<Map>() ?? [];
+
+    final buffer = StringBuffer();
+    buffer.writeln('## $title [$severity]');
+    buffer.writeln();
+    buffer.writeln('**Reported:** $time');
+    if (dev != null) {
+      buffer.writeln('**Device:** ${dev['deviceModel'] ?? dev['model'] ?? 'Unknown'} — ${dev['osVersion'] ?? dev['os'] ?? ''}');
+    }
+    if (app != null) {
+      buffer.writeln('**App:** v${app['version'] ?? ''} (${app['buildNumber'] ?? ''})');
+    }
+    buffer.writeln();
+    if (notes.isNotEmpty) {
+      buffer.writeln('### Notes');
+      buffer.writeln(notes);
+      buffer.writeln();
+    }
+    if (nav.isNotEmpty) {
+      buffer.writeln('### User Journey');
+      for (final step in nav) {
+        if (step is Map) {
+          buffer.writeln('- ${step['action'] ?? ''} ${step['route'] ?? ''}');
+        } else {
+          buffer.writeln('- $step');
+        }
+      }
+      buffer.writeln();
+    }
+    if (crashes.isNotEmpty) {
+      buffer.writeln('### Crashes');
+      for (final c in crashes) {
+        buffer.writeln('- ${c['message']}');
+      }
+      buffer.writeln();
+    }
+    if (net.isNotEmpty) {
+      buffer.writeln('### Network Requests');
+      for (final n in net) {
+        final req = n['request'] as Map?;
+        final res = n['response'] as Map?;
+        buffer.writeln('- ${req?['method'] ?? 'GET'} ${req?['url'] ?? ''} → ${res?['statusCode'] ?? ''}');
+      }
+      buffer.writeln();
+    }
+    return buffer.toString();
   }
 
   Widget _reportSection(String title, IconData icon, Color color) {
@@ -371,15 +537,37 @@ class _ReportScreenState extends State<ReportScreen> {
     );
   }
 
-  Widget _navItem(Map<String, dynamic> n) {
-    final action = n['action'] ?? '';
-    final route = n['route'] ?? '';
-    final icon = action == 'push'
-        ? Icons.arrow_forward_rounded
-        : Icons.arrow_back_rounded;
-    final color = action == 'push'
-        ? const Color(0xFF34D399)
-        : const Color(0xFFFBBF24);
+  Widget _navItem(dynamic n) {
+    if (n is String) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.arrow_forward_rounded,
+              size: 14,
+              color: Color(0xFF34D399),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                n,
+                style: TextStyle(color: Colors.grey[300], fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    final map = n is Map ? Map<String, dynamic>.from(n) : <String, dynamic>{};
+    final action = map['action']?.toString() ?? '';
+    final route = (map['route'] ?? map['screen'] ?? map['name'] ?? '').toString();
+    final icon = action == 'pop'
+        ? Icons.arrow_back_rounded
+        : Icons.arrow_forward_rounded;
+    final color = action == 'pop'
+        ? const Color(0xFFFBBF24)
+        : const Color(0xFF34D399);
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -400,9 +588,9 @@ class _ReportScreenState extends State<ReportScreen> {
               style: TextStyle(color: Colors.grey[300], fontSize: 12),
             ),
           ),
-          if (n['timestamp'] != null)
+          if (map['timestamp'] != null)
             Text(
-              _formatTime(n['timestamp']),
+              _formatTime(map['timestamp']),
               style: TextStyle(color: Colors.grey[700], fontSize: 10),
             ),
         ],
@@ -417,9 +605,9 @@ class _ReportScreenState extends State<ReportScreen> {
     final res = n['response'] is Map
         ? Map<String, dynamic>.from(n['response'] as Map)
         : <String, dynamic>{};
-    final method = req['method'] ?? 'GET';
-    final url = req['url'] ?? '';
-    final status = res['statusCode'];
+    final method = (req['method'] ?? n['method'] ?? 'GET').toString();
+    final url = (req['url'] ?? n['url'] ?? '').toString();
+    final status = res['statusCode'] ?? n['statusCode'] ?? n['status'];
     return Container(
       margin: const EdgeInsets.only(bottom: 4),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),

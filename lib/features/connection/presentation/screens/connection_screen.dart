@@ -2,8 +2,8 @@ import 'dart:math';
 import 'package:web/web.dart' as web;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../services/firebase_service.dart';
-import '../widgets/glass_container.dart';
+import '../../../dashboard/data/firebase_service.dart';
+import '../../../../core/widgets/glass_container.dart';
 
 class ConnectionScreen extends StatefulWidget {
   const ConnectionScreen({super.key});
@@ -425,7 +425,7 @@ class _ConnectionScreenState extends State<ConnectionScreen>
         child: InkWell(
           borderRadius: BorderRadius.circular(10),
           onTap: () {
-            Navigator.pushNamed(context, '/report', arguments: reportId);
+            Navigator.pushNamed(context, '/report/$reportId');
           },
           child: Container(
             padding: const EdgeInsets.all(12),

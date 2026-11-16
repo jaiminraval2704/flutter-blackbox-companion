@@ -4,10 +4,13 @@ import 'dart:js_interop';
 import 'package:web/web.dart' as web;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../services/firebase_service.dart';
+import '../../data/firebase_service.dart';
+import '../../../auth/data/auth_service.dart';
+import '../../../pricing/data/tier_service.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:fl_chart/fl_chart.dart';
-import '../widgets/stat_card.dart';
+import '../../../../core/widgets/stat_card.dart';
+import '../../../../core/widgets/upgrade_banner.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -24,8 +27,12 @@ class _DashboardScreenState extends State<DashboardScreen>
   final TextEditingController _networkSearchController =
       TextEditingController();
   final TextEditingController _logSearchController = TextEditingController();
+  final TextEditingController _reportSearchController = TextEditingController();
   final Set<String> _activeLogLevels = {'DEBUG', 'INFO', 'WARNING', 'ERROR'};
   String _networkMethodFilter = 'ALL';
+  String _reportSeverityFilter = 'ALL';
+  bool _isLoadingReports = false;
+  List<Map<String, dynamic>> _pastReports = [];
   late DateTime _connectedAt;
   bool _notificationsEnabled = false;
   Timer? _rebuildTimer;
@@ -36,6 +43,25 @@ class _DashboardScreenState extends State<DashboardScreen>
     _connectedAt = DateTime.now();
     // Listen for crashes to show browser notifications
     FirebaseService.instance.addListener(_onDataChanged);
+    _refreshReports();
+  }
+
+  Future<void> _refreshReports() async {
+    if (!mounted) return;
+    setState(() => _isLoadingReports = true);
+    try {
+      final list = await FirebaseService.instance.loadPastReports();
+      if (mounted) {
+        setState(() {
+          _pastReports = list;
+          _isLoadingReports = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _isLoadingReports = false);
+      }
+    }
   }
 
   @override
@@ -43,6 +69,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     _rebuildTimer?.cancel();
     _networkSearchController.dispose();
     _logSearchController.dispose();
+    _reportSearchController.dispose();
     FirebaseService.instance.removeListener(_onDataChanged);
     super.dispose();
   }
@@ -148,57 +175,6 @@ class _DashboardScreenState extends State<DashboardScreen>
     return const Color(0xFFF87171);
   }
 
-  String _formatDuration(Duration d) {
-    if (d.inHours > 0)
-      return '${d.inHours}h ${d.inMinutes.remainder(60)}m ${d.inSeconds.remainder(60)}s';
-    if (d.inMinutes > 0) return '${d.inMinutes}m ${d.inSeconds.remainder(60)}s';
-    return '${d.inSeconds}s';
-  }
-
-  Map<String, dynamic> _getNetworkStats() {
-    final requests = FirebaseService.instance.networkRequests;
-    if (requests.isEmpty) {
-      return {
-        'total': 0,
-        'success': 0,
-        'errors': 0,
-        'avgTime': 0,
-        'successRate': 0.0,
-      };
-    }
-    int total = requests.length;
-    int success = 0;
-    int errors = 0;
-    int totalTime = 0;
-    int withTime = 0;
-
-    for (final req in requests) {
-      final res = req['response'];
-      if (res is Map) {
-        final code = res['statusCode'];
-        if (code is int) {
-          if (code < 400) {
-            success++;
-          } else {
-            errors++;
-          }
-        }
-        final dur = res['durationMs'];
-        if (dur is int) {
-          totalTime += dur;
-          withTime++;
-        }
-      }
-    }
-    return {
-      'total': total,
-      'success': success,
-      'errors': errors,
-      'avgTime': withTime > 0 ? (totalTime / withTime).round() : 0,
-      'successRate': total > 0 ? (success / total * 100) : 0.0,
-    };
-  }
-
   // ── Build ──────────────────────────────────────────────────────────
 
   @override
@@ -223,8 +199,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   // ── Header Bar ──────────────────────────────────────────────────────
 
   Widget _buildHeaderBar() {
-    final uptime = DateTime.now().difference(_connectedAt);
-    final stats = _getNetworkStats();
+    final stats = FirebaseService.instance.networkStats;
 
     return Container(
       height: 56,
@@ -306,15 +281,20 @@ class _DashboardScreenState extends State<DashboardScreen>
               }
             },
           ),
-          // Past Reports
+          // Bug & QA Reports
           IconButton(
-            tooltip: 'View past reports',
+            tooltip: 'View reports',
             icon: Icon(
-              Icons.folder_open_rounded,
+              Icons.assignment_rounded,
               size: 18,
-              color: Colors.grey[500],
+              color: _selectedIndex == 7
+                  ? const Color(0xFF38BDF8)
+                  : Colors.grey[500],
             ),
-            onPressed: _showPastReportsDialog,
+            onPressed: () {
+              setState(() => _selectedIndex = 7);
+              _refreshReports();
+            },
           ),
           // Share session
           IconButton(
@@ -360,7 +340,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               ),
               onPressed: () {
                 FirebaseService.instance.disconnect();
-                Navigator.pushReplacementNamed(context, '/');
+                Navigator.pushReplacementNamed(context, '/connection');
               },
               icon: const Icon(Icons.close_rounded, size: 16),
               label: const Text('Exit', style: TextStyle(fontSize: 13)),
@@ -385,14 +365,14 @@ class _DashboardScreenState extends State<DashboardScreen>
     await FirebaseService.instance.saveSessionSummary(uptime: uptime);
     if (mounted) {
       FirebaseService.instance.disconnect();
-      Navigator.pushReplacementNamed(context, '/');
+      Navigator.pushReplacementNamed(context, '/connection');
     }
   }
 
   void _shareSession() {
     final sessionId = FirebaseService.instance.sessionId;
     if (sessionId == null) return;
-    final url = 'https://flutter-blackbox-companion.web.app/?watch=$sessionId';
+    final url = 'https://flutter-blackbox-companion.web.app/watch/$sessionId';
     Clipboard.setData(ClipboardData(text: url));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
@@ -627,6 +607,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
 
     if (reportId != null && mounted) {
+      _refreshReports();
       // Show success dialog with shareable link
       showDialog(
         context: context,
@@ -712,8 +693,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                 Navigator.pop(ctx);
                 Navigator.pushNamed(
                   context,
-                  '/report',
-                  arguments: {'reportId': reportId, 'fromDashboard': true},
+                  '/report/$reportId',
+                  arguments: {'fromDashboard': true},
                 );
               },
               child: const Text('View Report'),
@@ -722,174 +703,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         ),
       );
     }
-  }
-
-  Future<void> _showPastReportsDialog() async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        contentPadding: const EdgeInsets.all(32),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('Loading reports...', style: TextStyle(color: Colors.white)),
-          ],
-        ),
-      ),
-    );
-
-    final reports = await FirebaseService.instance.loadPastReports();
-    if (mounted) {
-      Navigator.pop(context); // Close loading dialog
-      _showReportsListDialog(reports);
-    }
-  }
-
-  void _showReportsListDialog(List<Map<String, dynamic>> reports) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E293B),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            const Icon(
-              Icons.folder_open_rounded,
-              color: Color(0xFF38BDF8),
-              size: 24,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'Past Bug Reports',
-              style: GoogleFonts.outfit(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        content: SizedBox(
-          width: 500,
-          height: 400,
-          child: reports.isEmpty
-              ? Center(
-                  child: Text(
-                    'No past reports found.',
-                    style: TextStyle(color: Colors.grey[500]),
-                  ),
-                )
-              : ListView.builder(
-                  itemCount: reports.length,
-                  itemBuilder: (context, index) {
-                    final report = reports[index];
-                    final title = report['title'] ?? 'Bug Report';
-                    final timestamp = report['createdAt'] ?? '';
-                    final reportId = report['reportId'] ?? '';
-
-                    // Format date locally
-                    String dateStr = timestamp;
-                    try {
-                      final dt = DateTime.parse(timestamp.toString()).toLocal();
-                      dateStr =
-                          '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-                    } catch (_) {}
-
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(8),
-                          onTap: () {
-                            Navigator.pop(ctx);
-                            Navigator.pushNamed(
-                              context,
-                              '/report',
-                              arguments: {
-                                'reportId': reportId,
-                                'fromDashboard': true,
-                              },
-                            );
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.03),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.05),
-                              ),
-                            ),
-                            child: Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: const Color(
-                                      0xFFF87171,
-                                    ).withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: const Icon(
-                                    Icons.bug_report_rounded,
-                                    size: 16,
-                                    color: Color(0xFFF87171),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        title,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w500,
-                                          fontSize: 13,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        dateStr,
-                                        style: TextStyle(
-                                          color: Colors.grey[600],
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Icon(
-                                  Icons.arrow_forward_ios_rounded,
-                                  size: 12,
-                                  color: Colors.grey[600],
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('Close', style: TextStyle(color: Colors.grey[500])),
-          ),
-        ],
-      ),
-    );
   }
 
   // ── Sidebar ──────────────────────────────────────────────────────────
@@ -967,6 +780,12 @@ class _DashboardScreenState extends State<DashboardScreen>
           _sidebarItem(4, Icons.perm_device_information_rounded, 'Device Info'),
           _sidebarItem(5, Icons.bug_report_rounded, 'Crashes'),
           _sidebarItem(6, Icons.route_rounded, 'Journey'),
+          _sidebarItem(
+            7,
+            Icons.assignment_rounded,
+            'Reports',
+            badgeCount: FirebaseService.instance.reports.length,
+          ),
           const Spacer(),
           // Export HAR
           Padding(
@@ -981,20 +800,96 @@ class _DashboardScreenState extends State<DashboardScreen>
               style: TextStyle(color: Colors.grey[800], fontSize: 10),
             ),
           ),
-          // Footer
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 4, 20, 20),
-            child: Text(
-              'Powered by BlackBox',
-              style: TextStyle(color: Colors.grey[700], fontSize: 11),
-            ),
-          ),
+          // User Profile Footer
+          _buildUserProfile(),
         ],
       ),
     );
   }
 
-  Widget _sidebarItem(int index, IconData icon, String title) {
+  Widget _buildUserProfile() {
+    return ListenableBuilder(
+      listenable: AuthService.instance,
+      builder: (context, _) {
+        final auth = AuthService.instance;
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+            ),
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: const Color(0xFF38BDF8).withValues(alpha: 0.2),
+                backgroundImage: auth.photoUrl != null
+                    ? NetworkImage(auth.photoUrl!)
+                    : null,
+                child: auth.photoUrl == null
+                    ? Icon(
+                        auth.isGuest
+                            ? Icons.person_outline_rounded
+                            : Icons.person_rounded,
+                        size: 18,
+                        color: const Color(0xFF38BDF8),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      auth.displayName,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${auth.tier[0].toUpperCase()}${auth.tier.substring(1)} Tier',
+                      style: TextStyle(
+                        color: auth.isPro
+                            ? const Color(0xFFF59E0B)
+                            : Colors.grey[500],
+                        fontSize: 11,
+                        fontWeight: auth.isPro
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              IconButton(
+                icon: Icon(
+                  Icons.logout_rounded,
+                  size: 16,
+                  color: Colors.grey[500],
+                ),
+                tooltip: 'Sign Out',
+                onPressed: () async {
+                  if (!mounted) return;
+                  final navigator = Navigator.of(context);
+                  await auth.signOut();
+                  navigator.pushReplacementNamed('/auth');
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _sidebarItem(int index, IconData icon, String title, {int? badgeCount}) {
     final isSelected = _selectedIndex == index;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
@@ -1006,6 +901,9 @@ class _DashboardScreenState extends State<DashboardScreen>
             setState(() {
               _selectedIndex = index;
             });
+            if (index == 7) {
+              _refreshReports();
+            }
           },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
@@ -1031,16 +929,41 @@ class _DashboardScreenState extends State<DashboardScreen>
                       : Colors.grey[600],
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: isSelected ? Colors.white : Colors.grey[500],
-                    fontWeight: isSelected
-                        ? FontWeight.w600
-                        : FontWeight.normal,
-                    fontSize: 14,
+                Expanded(
+                  child: Text(
+                    title,
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : Colors.grey[500],
+                      fontWeight: isSelected
+                          ? FontWeight.w600
+                          : FontWeight.normal,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
+                if (badgeCount != null && badgeCount > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? const Color(0xFF38BDF8).withValues(alpha: 0.25)
+                          : Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      badgeCount > 99 ? '99+' : '$badgeCount',
+                      style: TextStyle(
+                        color: isSelected
+                            ? const Color(0xFF38BDF8)
+                            : Colors.grey[400],
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -1079,6 +1002,22 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   void _exportHAR() {
+    final config = TierService.instance.configFor(AuthService.instance.tier);
+    if (!config.canExport) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            'HAR export is available on Pro and higher tiers.',
+          ),
+          action: SnackBarAction(
+            label: 'Upgrade',
+            onPressed: () => Navigator.pushNamed(context, '/pricing'),
+          ),
+        ),
+      );
+      return;
+    }
+
     final requests = FirebaseService.instance.networkRequests;
     if (requests.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1195,7 +1134,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ),
                     onPressed: () {
                       FirebaseService.instance.disconnect();
-                      Navigator.pushReplacementNamed(context, '/');
+                      Navigator.pushReplacementNamed(context, '/connection');
                     },
                     icon: const Icon(Icons.hub_rounded, size: 18),
                     label: const Text('New Connection'),
@@ -1205,16 +1144,45 @@ class _DashboardScreenState extends State<DashboardScreen>
             );
           }
 
-          if (_selectedIndex == 0) return _buildOverviewView();
-          if (_selectedIndex == 1) return _buildNetworkView();
-          if (_selectedIndex == 2) return _buildLogsView();
-          if (_selectedIndex == 3) return _buildPerformanceView();
-          if (_selectedIndex == 4) return _buildDeviceInfoView();
-          if (_selectedIndex == 5) return _buildCrashesView();
-          return _buildJourneyView();
+          final fb = FirebaseService.instance;
+          final config = TierService.instance.configFor(
+            AuthService.instance.tier,
+          );
+
+          return Column(
+            children: [
+              if (fb.logsAtCapacity)
+                UpgradeBanner(
+                  message:
+                      'You have reached the free tier limit for logs per session.',
+                  current: fb.logs.length,
+                  max: config.maxLogsPerSession,
+                ),
+              if (fb.networkAtCapacity && !fb.logsAtCapacity)
+                UpgradeBanner(
+                  message:
+                      'You have reached the free tier limit for network requests per session.',
+                  current: fb.networkRequests.length,
+                  max: config.maxNetworkPerSession,
+                ),
+              Expanded(child: _buildSelectedTab()),
+            ],
+          );
         },
       ),
     );
+  }
+
+  Widget _buildSelectedTab() {
+    if (_selectedIndex == 0) return _buildOverviewView();
+    if (_selectedIndex == 1) return _buildNetworkView();
+    if (_selectedIndex == 2) return _buildLogsView();
+    if (_selectedIndex == 3) return _buildPerformanceView();
+    if (_selectedIndex == 4) return _buildDeviceInfoView();
+    if (_selectedIndex == 5) return _buildCrashesView();
+    if (_selectedIndex == 6) return _buildJourneyView();
+    if (_selectedIndex == 7) return _buildReportsView();
+    return const Center(child: Text('Unknown Tab'));
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -1223,7 +1191,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Widget _buildNetworkView() {
     final allRequests = FirebaseService.instance.networkRequests;
-    final stats = _getNetworkStats();
+    final stats = FirebaseService.instance.networkStats;
 
     final searchQuery = _networkSearchController.text.toLowerCase();
     final requests = allRequests.where((req) {
@@ -1233,8 +1201,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       final method = (request['method'] ?? 'GET').toString().toUpperCase();
       final statusCode = response['statusCode']?.toString() ?? '';
 
-      if (_networkMethodFilter != 'ALL' && method != _networkMethodFilter)
+      if (_networkMethodFilter != 'ALL' && method != _networkMethodFilter) {
         return false;
+      }
       if (searchQuery.isNotEmpty &&
           !url.contains(searchQuery) &&
           !method.toLowerCase().contains(searchQuery) &&
@@ -1715,11 +1684,14 @@ class _DashboardScreenState extends State<DashboardScreen>
       final level = (log['level'] ?? 'info').toString().toUpperCase();
       final message = (log['message'] ?? '').toString().toLowerCase();
       final tag = (log['tag'] ?? '').toString().toLowerCase();
-      if (!_activeLogLevels.contains(level)) return false;
+      if (!_activeLogLevels.contains(level)) {
+        return false;
+      }
       if (searchQuery.isNotEmpty &&
           !message.contains(searchQuery) &&
-          !tag.contains(searchQuery))
+          !tag.contains(searchQuery)) {
         return false;
+      }
       return true;
     }).toList();
 
@@ -2407,6 +2379,17 @@ class _DashboardScreenState extends State<DashboardScreen>
                       FirebaseService.instance.navigationEvents.length
                           .toString(),
                     ),
+                    const Divider(color: Colors.white12, height: 24),
+                    InkWell(
+                      onTap: () {
+                        setState(() => _selectedIndex = 7);
+                        _refreshReports();
+                      },
+                      child: _quickStatRow(
+                        'Bug Reports',
+                        '${FirebaseService.instance.reports.length} (view)',
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -2508,7 +2491,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
 
     Map<String, dynamic> info = {};
-    if (infoRaw is Map && infoRaw.isNotEmpty) {
+    if (infoRaw.isNotEmpty) {
       final firstVal = infoRaw.values.first;
       if (firstVal is Map) {
         info = Map<String, dynamic>.from(firstVal);
@@ -2548,10 +2531,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               const SizedBox(height: 8),
               Text(
                 'Real-time specifications and environment details of the connected device.',
-                style: TextStyle(
-                  color: Colors.grey[500],
-                  fontSize: 14,
-                ),
+                style: TextStyle(color: Colors.grey[500], fontSize: 14),
               ),
             ],
           ),
@@ -2809,6 +2789,611 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // ── REPORTS VIEW ────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════
+
+  Widget _buildReportsView() {
+    final Map<String, Map<String, dynamic>> combined = {};
+    for (final r in _pastReports) {
+      final id = (r['reportId'] ?? '').toString();
+      if (id.isNotEmpty) combined[id] = r;
+    }
+    for (final r in FirebaseService.instance.reports) {
+      final id = (r['reportId'] ?? '').toString();
+      if (id.isNotEmpty) combined[id] = r;
+    }
+    final allReports = combined.values.toList();
+    allReports.sort((a, b) {
+      final ta = (a['createdAt'] ?? a['timestamp'] ?? '').toString();
+      final tb = (b['createdAt'] ?? b['timestamp'] ?? '').toString();
+      return tb.compareTo(ta);
+    });
+
+    final query = _reportSearchController.text.trim().toLowerCase();
+    final filtered = allReports.where((r) {
+      final title = (r['title'] ?? r['bugTitle'] ?? '').toString().toLowerCase();
+      final notes = (r['notes'] ?? '').toString().toLowerCase();
+      final id = (r['reportId'] ?? '').toString().toLowerCase();
+      final severity = (r['severity'] ?? 'NORMAL').toString().toUpperCase();
+
+      if (_reportSeverityFilter != 'ALL' && severity != _reportSeverityFilter) {
+        return false;
+      }
+      if (query.isNotEmpty) {
+        final matches = title.contains(query) ||
+            notes.contains(query) ||
+            id.contains(query);
+        if (!matches) return false;
+      }
+      return true;
+    }).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header
+        Padding(
+          padding: const EdgeInsets.fromLTRB(32, 28, 32, 16),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Bug & QA Reports',
+                      style: GoogleFonts.outfit(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Live QA reports synced from mobile device and historical bug reports',
+                      style: TextStyle(color: Colors.grey[400], fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: _isLoadingReports ? null : _refreshReports,
+                icon: _isLoadingReports
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh_rounded, size: 16),
+                label: const Text('Refresh'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.grey[300],
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                onPressed: _showBugReportDialog,
+                icon: const Icon(Icons.add_rounded, size: 16),
+                label: const Text('New Report'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF38BDF8),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // Filter bar
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: _searchField(
+                  _reportSearchController,
+                  'Search reports by title, notes, or ID...',
+                ),
+              ),
+              const SizedBox(width: 12),
+              for (final sev in ['ALL', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW'])
+                Padding(
+                  padding: const EdgeInsets.only(left: 4),
+                  child: _severityFilterChip(
+                    sev,
+                    _reportSeverityFilter == sev,
+                    () => setState(() => _reportSeverityFilter = sev),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Reports List
+        Expanded(
+          child: filtered.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.assignment_outlined,
+                        size: 48,
+                        color: Colors.grey[600],
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        allReports.isEmpty
+                            ? 'No reports generated yet'
+                            : 'No reports match your search filter',
+                        style: TextStyle(color: Colors.grey[400], fontSize: 16),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        allReports.isEmpty
+                            ? 'Trigger a QA report from the mobile overlay panel to see it here live.'
+                            : 'Try resetting the search or severity filters.',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(32, 8, 32, 32),
+                  itemCount: filtered.length,
+                  itemBuilder: (context, index) {
+                    final report = filtered[index];
+                    return _buildReportCard(report);
+                  },
+                ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReportCard(Map<String, dynamic> report) {
+    final reportId = (report['reportId'] ?? '').toString();
+    final title = (report['title'] ?? report['bugTitle'] ?? 'Bug Report').toString();
+    final severity = (report['severity'] ?? 'normal').toString().toUpperCase();
+    final createdAt = report['createdAt'] ?? report['timestamp'] ?? '';
+    final notes = (report['notes'] ?? '').toString();
+    final device = (report['deviceInfo'] ?? report['device']) as Map?;
+    final app = (report['appInfo'] ?? report['app']) as Map?;
+    final crashes = (report['crashes'] as List?)?.length ?? 0;
+    final failedReqs = (report['failedRequests'] as List?)?.length ?? 0;
+    final totalReqs = ((report['recentNetworkRequests'] ?? report['networkRequests']) as List?)?.length ?? 0;
+    final totalLogs = ((report['recentLogs'] ?? report['logs']) as List?)?.length ?? 0;
+    final totalSteps = ((report['navigationHistory'] ?? report['userJourney']) as List?)?.length ?? 0;
+    final screenshotBase64 = (report['screenshotBase64'] ?? report['screenshot']) as String?;
+
+    String dateStr = createdAt.toString();
+    try {
+      final dt = DateTime.parse(createdAt.toString()).toLocal();
+      dateStr =
+          '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    } catch (_) {}
+
+    Color sevColor;
+    switch (severity) {
+      case 'CRITICAL':
+        sevColor = const Color(0xFFEF4444);
+        break;
+      case 'HIGH':
+        sevColor = const Color(0xFFF97316);
+        break;
+      case 'MEDIUM':
+        sevColor = const Color(0xFFFBBF24);
+        break;
+      case 'LOW':
+        sevColor = const Color(0xFF38BDF8);
+        break;
+      default:
+        sevColor = const Color(0xFF818CF8);
+    }
+
+    final isLiveSession = FirebaseService.instance.reports
+        .any((r) => (r['reportId'] ?? '').toString() == reportId);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.03),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isLiveSession
+              ? const Color(0xFF34D399).withValues(alpha: 0.25)
+              : Colors.white.withValues(alpha: 0.06),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Top row: Title + Severity + Live badge + ID
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: sevColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.bug_report_rounded, color: sevColor, size: 18),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 15,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: sevColor.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(4),
+                              border: Border.all(color: sevColor.withValues(alpha: 0.3)),
+                            ),
+                            child: Text(
+                              severity,
+                              style: TextStyle(
+                                color: sevColor,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                          if (isLiveSession) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF34D399).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                  color: const Color(0xFF34D399).withValues(alpha: 0.3),
+                                ),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.circle, size: 6, color: Color(0xFF34D399)),
+                                  SizedBox(width: 4),
+                                  Text(
+                                    'ACTIVE SESSION',
+                                    style: TextStyle(
+                                      color: Color(0xFF34D399),
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '$dateStr • ID: $reportId',
+                        style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Copy Report ID',
+                  icon: const Icon(Icons.copy_rounded, size: 16, color: Colors.grey),
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: reportId));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Report ID copied!')),
+                    );
+                  },
+                ),
+                IconButton(
+                  tooltip: 'Copy Markdown',
+                  icon: const Icon(Icons.description_outlined, size: 16, color: Colors.grey),
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: _generateReportMarkdown(report)));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Report Markdown copied!')),
+                    );
+                  },
+                ),
+                const SizedBox(width: 4),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF38BDF8),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                  icon: const Icon(Icons.open_in_new_rounded, size: 14),
+                  label: const Text('View Report'),
+                  onPressed: () {
+                    Navigator.pushNamed(
+                      context,
+                      '/report/$reportId',
+                      arguments: {'fromDashboard': true},
+                    );
+                  },
+                ),
+              ],
+            ),
+            if (notes.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.02),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  notes,
+                  style: TextStyle(color: Colors.grey[300], fontSize: 12, height: 1.4),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            // Badges row: Device, OS, Crashes, Network, Logs, Steps + Thumbnail
+            Row(
+              children: [
+                Expanded(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      if (device != null) ...[
+                        _badgePill(
+                          Icons.phone_android_rounded,
+                          '${device['deviceModel'] ?? device['model'] ?? 'Device'}',
+                          Colors.purpleAccent,
+                        ),
+                        if (device['osVersion'] != null || device['os'] != null)
+                          _badgePill(
+                            Icons.settings_system_daydream_rounded,
+                            '${device['osVersion'] ?? device['os']}',
+                            Colors.blueAccent,
+                          ),
+                      ],
+                      if (app != null && app['version'] != null)
+                        _badgePill(
+                          Icons.info_outline_rounded,
+                          'v${app['version']}',
+                          Colors.indigoAccent,
+                        ),
+                      if (crashes > 0)
+                        _badgePill(
+                          Icons.error_outline_rounded,
+                          '$crashes crashes',
+                          const Color(0xFFEF4444),
+                        ),
+                      if (failedReqs > 0)
+                        _badgePill(
+                          Icons.warning_amber_rounded,
+                          '$failedReqs failed APIs',
+                          const Color(0xFFF97316),
+                        ),
+                      if (totalReqs > 0)
+                        _badgePill(
+                          Icons.swap_vert_rounded,
+                          '$totalReqs network',
+                          const Color(0xFF34D399),
+                        ),
+                      if (totalLogs > 0)
+                        _badgePill(
+                          Icons.terminal_rounded,
+                          '$totalLogs logs',
+                          const Color(0xFF38BDF8),
+                        ),
+                      if (totalSteps > 0)
+                        _badgePill(
+                          Icons.route_rounded,
+                          '$totalSteps steps',
+                          const Color(0xFFFBBF24),
+                        ),
+                    ],
+                  ),
+                ),
+                if (screenshotBase64 != null && screenshotBase64.isNotEmpty) ...[
+                  const SizedBox(width: 12),
+                  _buildScreenshotThumbnail(screenshotBase64, reportId),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _severityFilterChip(String label, bool isActive, VoidCallback onTap) {
+    Color color;
+    switch (label.toUpperCase()) {
+      case 'CRITICAL':
+        color = const Color(0xFFEF4444);
+        break;
+      case 'HIGH':
+        color = const Color(0xFFF97316);
+        break;
+      case 'MEDIUM':
+        color = const Color(0xFFFBBF24);
+        break;
+      case 'LOW':
+        color = const Color(0xFF38BDF8);
+        break;
+      default:
+        color = const Color(0xFF818CF8);
+    }
+    if (label == 'ALL') color = Colors.grey;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 28,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: isActive
+              ? color.withValues(alpha: 0.15)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: isActive
+                ? color.withValues(alpha: 0.4)
+                : Colors.white.withValues(alpha: 0.08),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: isActive ? color : Colors.grey[500],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _badgePill(IconData icon, String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildScreenshotThumbnail(String base64Str, String reportId) {
+    Uint8List? bytes;
+    try {
+      bytes = base64Decode(base64Str);
+    } catch (_) {}
+
+    if (bytes == null || bytes.isEmpty) return const SizedBox.shrink();
+
+    return InkWell(
+      onTap: () {
+        Navigator.pushNamed(
+          context,
+          '/report/$reportId',
+          arguments: {'fromDashboard': true},
+        );
+      },
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        width: 48,
+        height: 48,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+          color: Colors.black26,
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Image.memory(
+          bytes,
+          fit: BoxFit.cover,
+        ),
+      ),
+    );
+  }
+
+  String _generateReportMarkdown(Map<String, dynamic> r) {
+    final title = r['title'] ?? r['bugTitle'] ?? 'Bug Report';
+    final severity = (r['severity'] ?? 'NORMAL').toString().toUpperCase();
+    final time = r['createdAt'] ?? r['timestamp'] ?? '';
+    final notes = r['notes']?.toString() ?? '';
+    final dev = (r['deviceInfo'] ?? r['device']) as Map?;
+    final app = (r['appInfo'] ?? r['app']) as Map?;
+    final nav = (r['navigationHistory'] ?? r['userJourney']) as List? ?? [];
+    final net = ((r['recentNetworkRequests'] ?? r['networkRequests'] ?? r['failedRequests']) as List?)?.cast<Map>() ?? [];
+    final crashes = (r['crashes'] as List?)?.cast<Map>() ?? [];
+
+    final buffer = StringBuffer();
+    buffer.writeln('## $title [$severity]');
+    buffer.writeln();
+    buffer.writeln('**Reported:** $time');
+    if (dev != null) {
+      buffer.writeln('**Device:** ${dev['deviceModel'] ?? dev['model'] ?? 'Unknown'} — ${dev['osVersion'] ?? dev['os'] ?? ''}');
+    }
+    if (app != null) {
+      buffer.writeln('**App:** v${app['version'] ?? ''} (${app['buildNumber'] ?? ''})');
+    }
+    buffer.writeln();
+    if (notes.isNotEmpty) {
+      buffer.writeln('### Notes');
+      buffer.writeln(notes);
+      buffer.writeln();
+    }
+    if (nav.isNotEmpty) {
+      buffer.writeln('### User Journey');
+      for (final step in nav) {
+        if (step is Map) {
+          buffer.writeln('- ${step['action'] ?? ''} ${step['route'] ?? ''}');
+        } else {
+          buffer.writeln('- $step');
+        }
+      }
+      buffer.writeln();
+    }
+    if (crashes.isNotEmpty) {
+      buffer.writeln('### Crashes');
+      for (final c in crashes) {
+        buffer.writeln('- ${c['message']}');
+      }
+      buffer.writeln();
+    }
+    if (net.isNotEmpty) {
+      buffer.writeln('### Network Requests');
+      for (final n in net) {
+        final req = n['request'] as Map?;
+        final res = n['response'] as Map?;
+        buffer.writeln('- ${req?['method'] ?? 'GET'} ${req?['url'] ?? ''} → ${res?['statusCode'] ?? ''}');
+      }
+      buffer.writeln();
+    }
+    return buffer.toString();
+  }
+
   Widget _jsonView(dynamic data) {
     String text;
     try {
@@ -3006,7 +3591,7 @@ class _PremiumDeviceCardState extends State<_PremiumDeviceCard>
       parent: _enterAnimController,
       curve: Curves.easeOutCubic,
     );
-    
+
     // Staggered entrance based on index
     Future.delayed(Duration(milliseconds: 100 * widget.index), () {
       if (mounted) _enterAnimController.forward();
@@ -3040,16 +3625,18 @@ class _PremiumDeviceCardState extends State<_PremiumDeviceCard>
           curve: Curves.easeOutCubic,
           width: 320,
           padding: const EdgeInsets.all(24),
-          // ignore: deprecated_member_use
-          transform: Matrix4.identity()
-            ..translate(0.0, _isHovered ? -6.0 : 0.0),
+          transform: Matrix4.translationValues(
+            0.0,
+            _isHovered ? -6.0 : 0.0,
+            0.0,
+          ),
           decoration: BoxDecoration(
             color: const Color(0xFF1E1E2A),
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: _isHovered 
-                ? widget.gradientColors[0].withValues(alpha: 0.5)
-                : Colors.white.withValues(alpha: 0.05),
+              color: _isHovered
+                  ? widget.gradientColors[0].withValues(alpha: 0.5)
+                  : Colors.white.withValues(alpha: 0.05),
               width: 1.5,
             ),
             boxShadow: _isHovered
@@ -3059,14 +3646,14 @@ class _PremiumDeviceCardState extends State<_PremiumDeviceCard>
                       blurRadius: 20,
                       spreadRadius: 2,
                       offset: const Offset(0, 8),
-                    )
+                    ),
                   ]
                 : [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.2),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
-                    )
+                    ),
                   ],
           ),
           child: Column(
@@ -3110,10 +3697,9 @@ class _PremiumDeviceCardState extends State<_PremiumDeviceCard>
                 ],
               ),
               const SizedBox(height: 24),
-              ...widget.items.entries.map((e) => _PremiumInfoRow(
-                    label: e.key,
-                    value: e.value,
-                  )),
+              ...widget.items.entries.map(
+                (e) => _PremiumInfoRow(label: e.key, value: e.value),
+              ),
             ],
           ),
         ),
@@ -3161,5 +3747,4 @@ class _PremiumInfoRow extends StatelessWidget {
       ),
     );
   }
-
 }
