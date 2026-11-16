@@ -58,7 +58,15 @@ class _DashboardScreenState extends State<DashboardScreen>
     _connectedAt = DateTime.now();
     try {
       _popStateCallback = ((web.Event event) {
-        if (mounted && _selectedIndex != 0) {
+        if (!mounted) return;
+        final path = web.window.location.pathname;
+        if (path == '/' || path == '/connection') {
+          if (Navigator.canPop(context)) {
+            Navigator.pop(context);
+          } else {
+            Navigator.pushNamedAndRemoveUntil(context, '/connection', (r) => false);
+          }
+        } else if (_selectedIndex != 0) {
           setState(() {
             _selectedIndex = 0;
           });

@@ -24,11 +24,32 @@ class _ReportScreenState extends State<ReportScreen> {
   Map<String, dynamic>? _report;
   bool _isLoading = true;
   String? _error;
+  JSFunction? _popStateCallback;
 
   @override
   void initState() {
     super.initState();
     _loadReport();
+    try {
+      _popStateCallback = ((web.Event event) {
+        if (!mounted) return;
+        final currentPath = web.window.location.pathname;
+        if (!currentPath.contains('/report/')) {
+          _handleBack();
+        }
+      }).toJS;
+      web.window.addEventListener('popstate', _popStateCallback);
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    if (_popStateCallback != null) {
+      try {
+        web.window.removeEventListener('popstate', _popStateCallback);
+      } catch (_) {}
+    }
+    super.dispose();
   }
 
   Future<void> _loadReport() async {
@@ -54,6 +75,16 @@ class _ReportScreenState extends State<ReportScreen> {
   }
 
   void _handleBack() {
+    if (!mounted) return;
+    final currentPath = web.window.location.pathname;
+    if (currentPath == '/' || currentPath == '/connection') {
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/connection',
+        (route) => false,
+      );
+      return;
+    }
     if (Navigator.canPop(context)) {
       Navigator.pop(context);
     } else {
