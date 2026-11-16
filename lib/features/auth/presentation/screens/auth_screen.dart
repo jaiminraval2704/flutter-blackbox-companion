@@ -27,10 +27,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
     // Listen to auth changes
     AuthService.instance.addListener(_onAuthStateChanged);
 
-    if (!AuthService.instance.isLoading) {
-      _fadeController.forward();
-      _checkExistingSession();
-    }
+    _fadeController.forward();
+    _checkExistingSession();
   }
 
   @override
@@ -79,7 +77,7 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    if (AuthService.instance.isLoading) {
+    if (AuthService.instance.isLoading && _isLoading) {
       return const Scaffold(
         backgroundColor: Color(0xFF080C14),
         body: Center(child: CircularProgressIndicator()),

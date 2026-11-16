@@ -69,7 +69,7 @@ class BlackBoxCompanionApp extends StatelessWidget {
           ),
         ),
       ),
-      initialRoute: '/auth',
+      initialRoute: '/',
       onGenerateRoute: (settings) {
         Widget page;
         final uri = Uri.parse(settings.name ?? '/');
@@ -77,13 +77,13 @@ class BlackBoxCompanionApp extends StatelessWidget {
 
         // ── Route matching ────────────────────────────────────────────
         // Matches URL paths like:
-        //   /auth          → AuthScreen
+        //   /              → ConnectionScreen (default)
         //   /connection    → ConnectionScreen
         //   /dashboard     → DashboardScreen
         //   /pricing       → PricingScreen
+        //   /auth          → AuthScreen
         //   /report/123    → ReportScreen(reportId: '123')
         //   /watch/ABC     → ConnectionScreen (view-only session)
-        //   /              → AuthScreen (default)
 
         if (pathSegments.isNotEmpty &&
             pathSegments[0] == 'report' &&
@@ -102,17 +102,18 @@ class BlackBoxCompanionApp extends StatelessWidget {
         } else {
           // Standard path matching
           switch (uri.path) {
-            case '/auth':
-              page = const AuthScreen();
-              break;
+            case '/':
             case '/connection':
               page = const ConnectionScreen();
+              break;
+            case '/dashboard':
+              page = const DashboardScreen();
               break;
             case '/pricing':
               page = const PricingScreen();
               break;
-            case '/dashboard':
-              page = const DashboardScreen();
+            case '/auth':
+              page = const AuthScreen();
               break;
             case '/report':
               // /report with arguments (internal navigation)
@@ -131,7 +132,7 @@ class BlackBoxCompanionApp extends StatelessWidget {
               );
               break;
             default:
-              page = const AuthScreen();
+              page = const ConnectionScreen();
           }
         }
 

@@ -12,15 +12,38 @@ class AuthService extends ChangeNotifier {
   static AuthService get instance => _instance;
 
   AuthService._() {
-    _auth.authStateChanges().listen(_onAuthStateChanged);
+    try {
+      _auth.authStateChanges().listen(
+        _onAuthStateChanged,
+        onError: (e) {
+          debugPrint('Auth state error: $e');
+          _isLoading = false;
+          _isGuest = true;
+          notifyListeners();
+        },
+      );
+      // Failsafe timeout: ensure isLoading is never stuck on web
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (_isLoading) {
+          _isLoading = false;
+          _isGuest = _user == null;
+          notifyListeners();
+        }
+      });
+    } catch (e) {
+      debugPrint('Auth init error: $e');
+      _isLoading = false;
+      _isGuest = true;
+      notifyListeners();
+    }
   }
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   User? _user;
   String _tier = 'free';
-  bool _isGuest = false;
-  bool _isLoading = true;
+  bool _isGuest = true;
+  bool _isLoading = false;
 
   /// Currently signed-in Firebase user (null if guest or signed out).
   User? get user => _user;
