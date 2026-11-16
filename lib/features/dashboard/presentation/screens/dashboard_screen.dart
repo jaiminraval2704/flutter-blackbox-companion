@@ -350,6 +350,18 @@ class _DashboardScreenState extends State<DashboardScreen>
               _selectTab(7);
             },
           ),
+          // Support Creator
+          IconButton(
+            tooltip: 'Support Creator (UPI / Donate)',
+            icon: const Icon(Icons.favorite_rounded, size: 18, color: Color(0xFFF472B6)),
+            onPressed: () {
+              Navigator.pushNamed(
+                context,
+                '/support',
+                arguments: {'fromDashboard': true},
+              );
+            },
+          ),
           // Share session
           IconButton(
             tooltip: 'Share live session',
@@ -839,6 +851,72 @@ class _DashboardScreenState extends State<DashboardScreen>
             Icons.assignment_rounded,
             'Reports',
             badgeCount: FirebaseService.instance.reports.length,
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(10),
+                onTap: () {
+                  Navigator.pushNamed(
+                    context,
+                    '/support',
+                    arguments: {'fromDashboard': true},
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        const Color(0xFFEC4899).withValues(alpha: 0.12),
+                        const Color(0xFF8B5CF6).withValues(alpha: 0.12),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: const Color(0xFFEC4899).withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.favorite_rounded,
+                        color: Color(0xFFF472B6),
+                        size: 16,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Support Creator',
+                        style: GoogleFonts.outfit(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const Spacer(),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF472B6).withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Text(
+                          'UPI',
+                          style: TextStyle(
+                            color: Color(0xFFF472B6),
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
           const Spacer(),
           // Export HAR

@@ -8,6 +8,7 @@ import 'features/dashboard/presentation/screens/dashboard_screen.dart';
 import 'features/report/presentation/screens/report_screen.dart';
 import 'features/auth/presentation/screens/auth_screen.dart';
 import 'features/pricing/presentation/screens/pricing_screen.dart';
+import 'features/support/presentation/screens/support_screen.dart';
 
 void main() async {
   try {
@@ -111,6 +112,12 @@ class BlackBoxCompanionApp extends StatelessWidget {
               break;
             case '/pricing':
               page = const PricingScreen();
+              break;
+            case '/support':
+              final fromDashboard = (settings.arguments is Map)
+                  ? (settings.arguments as Map)['fromDashboard'] == true
+                  : false;
+              page = SupportScreen(fromDashboard: fromDashboard);
               break;
             case '/auth':
               page = const AuthScreen();

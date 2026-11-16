@@ -161,24 +161,85 @@ class _ConnectionScreenState extends State<ConnectionScreen>
               child: SingleChildScrollView(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 40),
-                  child: screenWidth > 900
-                      ? Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildConnectCard(),
-                            const SizedBox(width: 24),
-                            _buildHistoryCard(),
-                          ],
-                        )
-                      : Column(
-                          children: [
-                            _buildConnectCard(),
-                            const SizedBox(height: 24),
-                            _buildHistoryCard(),
-                          ],
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      screenWidth > 900
+                          ? Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildConnectCard(),
+                                const SizedBox(width: 24),
+                                _buildHistoryCard(),
+                              ],
+                            )
+                          : Column(
+                              children: [
+                                _buildConnectCard(),
+                                const SizedBox(height: 24),
+                                _buildHistoryCard(),
+                              ],
+                            ),
+                      const SizedBox(height: 28),
+                      InkWell(
+                        onTap: () => Navigator.pushNamed(context, '/support'),
+                        borderRadius: BorderRadius.circular(20),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Text('Built with ❤️ by ', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                              Text(
+                                'Jaimin Raval',
+                                style: TextStyle(
+                                  color: Color(0xFF38BDF8),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                              Text(
+                                ' • Support via UPI',
+                                style: TextStyle(
+                                  color: Color(0xFFF472B6),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
+                      ),
+                    ],
+                  ),
                 ),
+              ),
+            ),
+          ),
+          // Top right Support Button
+          Positioned(
+            top: 24,
+            right: 24,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                Navigator.pushNamed(context, '/support');
+              },
+              icon: const Icon(Icons.favorite_rounded, color: Color(0xFFF472B6), size: 16),
+              label: const Text(
+                'Support Creator',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: const Color(0xFFEC4899).withValues(alpha: 0.4)),
+                backgroundColor: const Color(0xFF0F172A).withValues(alpha: 0.8),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
               ),
             ),
           ),
