@@ -62,6 +62,8 @@ class FirebaseService extends ChangeNotifier {
   bool get isConnected => _isConnected;
   bool get isViewOnly => _isViewOnly;
   String? get sessionId => _sessionId;
+  DateTime? _connectedAt;
+  DateTime? get connectedAt => _connectedAt;
 
   // ── Tier-aware capacity tracking ─────────────────────────────────
   bool _logsAtCapacity = false;
@@ -102,6 +104,7 @@ class FirebaseService extends ChangeNotifier {
           if (data != null && data['connected'] == true) {
             _isConnected = true;
             _wasEverConnected = true;
+            _connectedAt ??= DateTime.now();
 
             // Track lastSeen for staleness detection
             if (data['lastSeen'] is int) {
@@ -116,7 +119,10 @@ class FirebaseService extends ChangeNotifier {
 
             // Only save session + clear localStorage if a real connection existed
             if (wasConnected) {
-              saveSessionSummary(uptime: const Duration(seconds: 0));
+              final uptime = _connectedAt != null
+                  ? DateTime.now().difference(_connectedAt!)
+                  : Duration.zero;
+              saveSessionSummary(uptime: uptime);
               try {
                 web.window.localStorage.removeItem('active_session_id');
               } catch (_) {}
@@ -329,6 +335,7 @@ class FirebaseService extends ChangeNotifier {
     _isConnected = false;
     _wasEverConnected = false;
     _lastSeenMs = 0;
+    _connectedAt = null;
   }
 
   // ── Session Management ──────────────────────────────────────────────

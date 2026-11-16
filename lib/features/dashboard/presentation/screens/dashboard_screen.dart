@@ -235,7 +235,10 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
           _headerDivider(),
           // Session uptime
-          _UptimeWidget(connectedAt: _connectedAt),
+          _UptimeWidget(
+            connectedAt: FirebaseService.instance.connectedAt ?? _connectedAt,
+            isConnected: FirebaseService.instance.isConnected,
+          ),
           _headerDivider(),
           // Quick stats
           Icon(Icons.swap_vert_rounded, size: 14, color: Colors.grey[500]),
@@ -3506,26 +3509,57 @@ class _PulsingDotState extends State<_PulsingDot>
 
 class _UptimeWidget extends StatefulWidget {
   final DateTime connectedAt;
-  const _UptimeWidget({required this.connectedAt});
+  final bool isConnected;
+
+  const _UptimeWidget({
+    required this.connectedAt,
+    this.isConnected = true,
+  });
 
   @override
   State<_UptimeWidget> createState() => _UptimeWidgetState();
 }
 
 class _UptimeWidgetState extends State<_UptimeWidget> {
-  late Timer _timer;
+  Timer? _timer;
+  Duration _frozenElapsed = Duration.zero;
 
   @override
   void initState() {
     super.initState();
+    _frozenElapsed = DateTime.now().difference(widget.connectedAt);
+    if (widget.isConnected) {
+      _startTimer();
+    }
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
+      if (mounted && widget.isConnected) {
+        setState(() {});
+      }
     });
   }
 
   @override
+  void didUpdateWidget(_UptimeWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isConnected && !widget.isConnected) {
+      // Disconnected: freeze uptime and stop timer completely
+      _frozenElapsed = DateTime.now().difference(widget.connectedAt);
+      _timer?.cancel();
+      _timer = null;
+      if (mounted) setState(() {});
+    } else if (!oldWidget.isConnected && widget.isConnected) {
+      // Reconnected: resume timer
+      _startTimer();
+    }
+  }
+
+  @override
   void dispose() {
-    _timer.cancel();
+    _timer?.cancel();
     super.dispose();
   }
 
@@ -3538,15 +3572,25 @@ class _UptimeWidgetState extends State<_UptimeWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final uptime = DateTime.now().difference(widget.connectedAt);
+    if (widget.isConnected) {
+      _frozenElapsed = DateTime.now().difference(widget.connectedAt);
+    }
+    final uptime = _frozenElapsed;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(Icons.timer_outlined, size: 14, color: Colors.grey[500]),
+        Icon(
+          Icons.timer_outlined,
+          size: 14,
+          color: widget.isConnected ? Colors.grey[500] : Colors.grey[700],
+        ),
         const SizedBox(width: 6),
         Text(
           _formatDuration(uptime),
-          style: TextStyle(color: Colors.grey[400], fontSize: 13),
+          style: TextStyle(
+            color: widget.isConnected ? Colors.grey[400] : Colors.grey[600],
+            fontSize: 13,
+          ),
         ),
       ],
     );
