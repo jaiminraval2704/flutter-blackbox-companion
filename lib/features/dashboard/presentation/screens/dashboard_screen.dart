@@ -179,19 +179,32 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Row(
-        children: [
-          _buildSidebar(),
-          Expanded(
-            child: Column(
-              children: [
-                _buildHeaderBar(),
-                Expanded(child: _buildContentArea()),
-              ],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_selectedIndex != 0) {
+          setState(() => _selectedIndex = 0);
+        } else if (Navigator.canPop(context)) {
+          Navigator.pop(context);
+        } else {
+          Navigator.pushReplacementNamed(context, '/connection');
+        }
+      },
+      child: Scaffold(
+        body: Row(
+          children: [
+            _buildSidebar(),
+            Expanded(
+              child: Column(
+                children: [
+                  _buildHeaderBar(),
+                  Expanded(child: _buildContentArea()),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

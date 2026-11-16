@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:js_interop';
+import 'package:web/web.dart' as web;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -51,22 +53,65 @@ class _ReportScreenState extends State<ReportScreen> {
     }
   }
 
+  void _handleBack() {
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+    } else {
+      final sessionId = FirebaseService.instance.sessionId;
+      if (sessionId != null && sessionId.isNotEmpty) {
+        Navigator.pushReplacementNamed(context, '/dashboard');
+      } else {
+        Navigator.pushReplacementNamed(context, '/connection');
+      }
+    }
+  }
+
+  void _downloadScreenshot(Uint8List bytes) {
+    try {
+      final blob = web.Blob(
+        [bytes.toJS].toJS,
+        web.BlobPropertyBag(type: 'image/png'),
+      );
+      final url = web.URL.createObjectURL(blob);
+      final anchor = web.HTMLAnchorElement()
+        ..href = url
+        ..download = 'blackbox_screenshot_${widget.reportId}.png';
+      anchor.click();
+      web.URL.revokeObjectURL(url);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Screenshot downloaded successfully!')),
+      );
+    } catch (e) {
+      debugPrint('Failed to download screenshot: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Download failed: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFF080C14), Color(0xFF0F172A)],
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _handleBack();
+      },
+      child: Scaffold(
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF080C14), Color(0xFF0F172A)],
+            ),
           ),
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null
+              ? _buildError()
+              : _buildReport(),
         ),
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-            ? _buildError()
-            : _buildReport(),
       ),
     );
   }
@@ -87,23 +132,26 @@ class _ReportScreenState extends State<ReportScreen> {
             style: const TextStyle(color: Color(0xFFF87171), fontSize: 16),
           ),
           const SizedBox(height: 24),
-          ElevatedButton(
-            onPressed: () {
-              if (widget.fromDashboard) {
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  '/dashboard',
-                  (route) => false,
-                );
-              } else {
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  '/connection',
-                  (route) => false,
-                );
-              }
-            },
-            child: const Text('Go Home'),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _handleBack,
+                icon: const Icon(Icons.arrow_back_rounded, size: 16),
+                label: const Text('Go Back'),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton(
+                onPressed: () {
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/connection',
+                    (route) => false,
+                  );
+                },
+                child: const Text('Go Home'),
+              ),
+            ],
           ),
         ],
       ),
@@ -138,6 +186,12 @@ class _ReportScreenState extends State<ReportScreen> {
           ),
           child: Row(
             children: [
+              IconButton(
+                tooltip: 'Back to Dashboard',
+                icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
+                onPressed: _handleBack,
+              ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
@@ -201,6 +255,17 @@ class _ReportScreenState extends State<ReportScreen> {
                 ),
               ),
               OutlinedButton.icon(
+                onPressed: _handleBack,
+                icon: const Icon(Icons.arrow_back_rounded, size: 14),
+                label: const Text('Back', style: TextStyle(fontSize: 12)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.grey[300],
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: _toMarkdown(r)));
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -218,19 +283,11 @@ class _ReportScreenState extends State<ReportScreen> {
               const SizedBox(width: 8),
               TextButton.icon(
                 onPressed: () {
-                  if (widget.fromDashboard) {
-                    Navigator.pushNamedAndRemoveUntil(
-                      context,
-                      '/dashboard',
-                      (route) => false,
-                    );
-                  } else {
-                    Navigator.pushNamedAndRemoveUntil(
-                      context,
-                      '/connection',
-                      (route) => false,
-                    );
-                  }
+                  Navigator.pushNamedAndRemoveUntil(
+                    context,
+                    '/connection',
+                    (route) => false,
+                  );
                 },
                 icon: Icon(
                   Icons.home_rounded,
@@ -360,19 +417,88 @@ class _ReportScreenState extends State<ReportScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _reportSection('Screenshot', Icons.image_rounded, const Color(0xFF38BDF8)),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _reportSection('Screenshot', Icons.image_rounded, const Color(0xFF38BDF8)),
+            ElevatedButton.icon(
+              onPressed: () => _downloadScreenshot(bytes!),
+              icon: const Icon(Icons.download_rounded, size: 14),
+              label: const Text('Download Image', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF38BDF8),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              ),
+            ),
+          ],
+        ),
         GlassContainer(
           padding: const EdgeInsets.all(16),
           child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 480),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.memory(
-                  bytes,
-                  fit: BoxFit.contain,
+            child: Stack(
+              alignment: Alignment.topRight,
+              children: [
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 520),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.memory(
+                      bytes,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
                 ),
-              ),
+                Positioned(
+                  top: 10,
+                  right: 10,
+                  child: Tooltip(
+                    message: 'Download screenshot image',
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => _downloadScreenshot(bytes!),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0F172A).withValues(alpha: 0.9),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.white24),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Colors.black45,
+                                blurRadius: 6,
+                                offset: Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.download_rounded,
+                                color: Color(0xFF38BDF8),
+                                size: 16,
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                'Download',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
