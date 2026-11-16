@@ -21,14 +21,14 @@ class _SupportScreenState extends State<SupportScreen> {
   static const String _portfolioUrl = 'https://jaimin-raval-portfolio.web.app/';
   static const String _githubUrl = 'https://github.com/jaiminraval2704';
 
-  int _selectedAmount = 100;
+  int _selectedAmount = 25;
   bool _isCustomAmount = false;
   final TextEditingController _customAmountController = TextEditingController();
   bool _copied = false;
   JSFunction? _popStateCallback;
 
   final List<Map<String, dynamic>> _tiers = [
-    {'amount': 50, 'emoji': '☕', 'label': 'Coffee'},
+    {'amount': 25, 'emoji': '☕', 'label': 'Chai'},
     {'amount': 100, 'emoji': '🍕', 'label': 'Snack'},
     {'amount': 250, 'emoji': '🚀', 'label': 'Supporter'},
     {'amount': 500, 'emoji': '💖', 'label': 'Sponsor'},
@@ -91,7 +91,7 @@ class _SupportScreenState extends State<SupportScreen> {
 
   String _getUpiPayload() {
     final amount = _isCustomAmount
-        ? (int.tryParse(_customAmountController.text.trim()) ?? 100)
+        ? (int.tryParse(_customAmountController.text.trim()) ?? 25)
         : _selectedAmount;
     final encodedName = Uri.encodeComponent(_payeeName);
     final encodedNote = Uri.encodeComponent('Support Flutter BlackBox');
@@ -131,7 +131,7 @@ class _SupportScreenState extends State<SupportScreen> {
   @override
   Widget build(BuildContext context) {
     final currentAmount = _isCustomAmount
-        ? (int.tryParse(_customAmountController.text.trim()) ?? 100)
+        ? (int.tryParse(_customAmountController.text.trim()) ?? 25)
         : _selectedAmount;
 
     return PopScope(
@@ -164,14 +164,23 @@ class _SupportScreenState extends State<SupportScreen> {
                         crossAxisAlignment: CrossAxisAlignment.center,
                         children: [
                           _buildHeroBanner(),
-                          const SizedBox(height: 32),
+                          const SizedBox(height: 24),
                           LayoutBuilder(
                             builder: (context, constraints) {
                               if (constraints.maxWidth > 760) {
                                 return Row(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Expanded(flex: 5, child: _buildCreatorCard()),
+                                    Expanded(
+                                      flex: 5,
+                                      child: Column(
+                                        children: [
+                                          _buildCreatorCard(),
+                                          const SizedBox(height: 16),
+                                          _buildInternationalSupportCard(),
+                                        ],
+                                      ),
+                                    ),
                                     const SizedBox(width: 24),
                                     Expanded(
                                       flex: 6,
@@ -183,16 +192,16 @@ class _SupportScreenState extends State<SupportScreen> {
                                 return Column(
                                   children: [
                                     _buildCreatorCard(),
-                                    const SizedBox(height: 24),
+                                    const SizedBox(height: 20),
                                     _buildUpiPaymentCard(currentAmount),
+                                    const SizedBox(height: 20),
+                                    _buildInternationalSupportCard(),
                                   ],
                                 );
                               }
                             },
                           ),
                           const SizedBox(height: 32),
-                          _buildInternationalSupportCard(),
-                          const SizedBox(height: 40),
                         ],
                       ),
                     ),
@@ -501,7 +510,7 @@ class _SupportScreenState extends State<SupportScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Pay via UPI (Instant & 0% Fee)',
+                      'Pay via UPI',
                       style: GoogleFonts.outfit(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -720,7 +729,7 @@ class _SupportScreenState extends State<SupportScreen> {
                   child: QrImageView(
                     data: _getUpiPayload(),
                     version: QrVersions.auto,
-                    size: 200.0,
+                    size: 170.0,
                     backgroundColor: Colors.white,
                     eyeStyle: const QrEyeStyle(
                       eyeShape: QrEyeShape.square,
@@ -778,18 +787,18 @@ class _SupportScreenState extends State<SupportScreen> {
 
   Widget _buildInternationalSupportCard() {
     return GlassContainer(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: const Color(0xFF818CF8).withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(Icons.public_rounded, color: Color(0xFF818CF8), size: 22),
+            child: const Icon(Icons.public_rounded, color: Color(0xFF818CF8), size: 20),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -797,29 +806,31 @@ class _SupportScreenState extends State<SupportScreen> {
                 Text(
                   'Outside India? Global Support',
                   style: GoogleFonts.outfit(
-                    fontSize: 15,
+                    fontSize: 14,
                     fontWeight: FontWeight.bold,
                     color: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'If UPI is not supported in your region, support via GitHub Sponsors or check out Jaimin\'s portfolio projects.',
-                  style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                  'If UPI is not supported, support via GitHub Sponsors or check Jaimin\'s portfolio.',
+                  style: TextStyle(color: Colors.grey[400], fontSize: 11),
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           OutlinedButton.icon(
             onPressed: () => _openUrl(_githubUrl),
-            icon: const Icon(Icons.star_rounded, color: Color(0xFFFBBF24), size: 16),
-            label: const Text('Star on GitHub'),
+            icon: const Icon(Icons.star_rounded, color: Color(0xFFFBBF24), size: 14),
+            label: const Text('GitHub', style: TextStyle(fontSize: 11)),
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.white,
               side: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
             ),
           ),
         ],
