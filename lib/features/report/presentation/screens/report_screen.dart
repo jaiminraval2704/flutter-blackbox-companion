@@ -256,17 +256,6 @@ class _ReportScreenState extends State<ReportScreen> {
                 ),
               ),
               OutlinedButton.icon(
-                onPressed: _handleBack,
-                icon: const Icon(Icons.arrow_back_rounded, size: 14),
-                label: const Text('Back', style: TextStyle(fontSize: 12)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.grey[300],
-                  side: BorderSide(color: Colors.white.withValues(alpha: 0.15)),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                ),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
                 onPressed: () {
                   Clipboard.setData(ClipboardData(text: _toMarkdown(r)));
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -433,69 +422,16 @@ class _ReportScreenState extends State<ReportScreen> {
         GlassContainer(
           padding: const EdgeInsets.all(16),
           child: Center(
-            child: Stack(
-              alignment: Alignment.topRight,
-              children: [
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxHeight: 520),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.memory(
-                      bytes,
-                      fit: BoxFit.contain,
-                      gaplessPlayback: true,
-                    ),
-                  ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 520),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.memory(
+                  bytes,
+                  fit: BoxFit.contain,
+                  gaplessPlayback: true,
                 ),
-                Positioned(
-                  top: 10,
-                  right: 10,
-                  child: Tooltip(
-                    message: 'Download screenshot image',
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () => _downloadScreenshot(bytes),
-                        borderRadius: BorderRadius.circular(8),
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0F172A).withValues(alpha: 0.9),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.white24),
-                            boxShadow: const [
-                              BoxShadow(
-                                color: Colors.black45,
-                                blurRadius: 6,
-                                offset: Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.download_rounded,
-                                color: Color(0xFF38BDF8),
-                                size: 16,
-                              ),
-                              SizedBox(width: 4),
-                              Text(
-                                'Download',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
